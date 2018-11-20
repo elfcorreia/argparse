@@ -3,24 +3,26 @@
 
 using namespace std;
 
+void print(map<string, string> &m) {
+	for (auto it: m) {
+		cout << it.first << ": " << it.second << ", ";
+	}
+	cout << endl;
+}
+
 void test_name() {
 	ArgumentParser parser;
 	parser.add_argument("-f", "--foo");
 	parser.add_argument("bar");	
+
 	auto args = parser.parse_args("BAR");
-	for (auto it: args) {
-		cout << it.first << ": " << get<const char*>(it.second) << endl;
-	}
+	print(args);
 	
 	args = parser.parse_args("BAR --foo FOO");
-	for (auto it: args) {
-		cout << it.first << ": " << get<const char*>(it.second) << endl;
-	}
+	print(args);
 	
 	args = parser.parse_args("--foo FOO");
-	for (auto it: args) {
-		cout << it.first << ": " << get<const char*>(it.second) << endl;
-	}
+	print(args);
 }
 
 //void test_action() {

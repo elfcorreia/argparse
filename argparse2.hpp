@@ -5,15 +5,8 @@
 #include <variant>
 #include <vector>
 #include <map>
-
-typedef std::variant<int, double, char, bool, const char*> Value;
-//union Value {
-	//int i;
-	//char c;
-	//float f;
-	//double d;
-	//bool b;
-//};
+#include <cstdio>
+#include <cstddef>
 
 enum Action {
 	ActionStore,
@@ -29,13 +22,31 @@ struct Argument {
 	std::vector<std::string> names;
 	Action action;
 	char nargs;
-	Value default_value;
-	Value const_value;
-	std::initializer_list<Value> choices;
+	std::string default_value;
+	std::string const_value;
+	std::string dest;
+	std::initializer_list<std::string> choices;
 	bool required;
 	std::string help; 
 	std::string metavar;
 };
+
+//split code
+//http://www.cplusplus.com/faq/sequences/strings/split/
+
+void split(std::vector<std::string> &result, const std::string& s) {
+	result.clear();
+	size_t current;
+	size_t next = -1;
+	do {
+		next = s.find_first_not_of(" ", next + 1 );
+		if (next == std::string::npos) break;
+		next -= 1;
+		current = next + 1;
+		next = s.find_first_of(" ", current);
+		result.push_back(s.substr(current, next - current));
+	} while (next != std::string::npos);
+}
 
 class ArgumentBuilder {
 private:
@@ -47,7 +58,7 @@ public:
 		: _arg(other._arg) { }
 	~ArgumentBuilder() { }
 	
-	ArgumentBuilder &store_const(Value value) {
+	ArgumentBuilder &store_const(std::string value) {
 		_arg->action = ActionStoreConst;
 		_arg->const_value = value;
 		return *this;
@@ -70,7 +81,7 @@ public:
 		return *this;
 	}
 
-	ArgumentBuilder &append_const(Value value) {
+	ArgumentBuilder &append_const(std::string value) {
 		_arg->action = ActionAppend;
 		_arg->const_value = value;
 		return *this;
@@ -96,12 +107,12 @@ public:
 		return *this;
 	}
 
-	ArgumentBuilder& default_value(Value value) {
+	ArgumentBuilder& default_value(std::string value) {
 		_arg->default_value = value;
 		return *this;
 	}
 
-	ArgumentBuilder& choices(std::initializer_list<Value> value) {
+	ArgumentBuilder& choices(std::initializer_list<std::string> value) {
 		_arg->choices = value;
 		return *this;
 	}
@@ -124,36 +135,91 @@ public:
 
 class ArgumentParser {
 private:
-	std::vector<Argument*> _arguments;
+	std::map<std::string, Argument> _optional_arguments;
+	std::vector<Argument> _positional_arguments;
 public:	
 	ArgumentParser(std::string description = "") { }
 	~ArgumentParser() { }
 
 	const ArgumentBuilder add_argument(std::string name_or_flag) {
-		Argument *a = new Argument();
-		a->names.push_back(name_or_flag);
-		_arguments.push_back(a);
-		return ArgumentBuilder(a);
+		Argument a;
+		a.names.push_back(name_or_flag);
+		a.action = ActionStore;
+		a.dest = name_or_flag;
+		a.nargs = '?';
+		bool optional_argument = name_or_flag.at(0) == '-';
+		if (optional_argument) {
+			a.required = false;
+			_optional_arguments[name_or_flag] = a;
+			return ArgumentBuilder(&(_optional_arguments[name_or_flag]));
+		} else {			
+			a.required = true;
+			_positional_arguments.push_back(a);
+			return ArgumentBuilder(&(_positional_arguments[_positional_arguments.size() - 1]));
+		}
 	}
 	
 	const ArgumentBuilder add_argument(std::string short_name, std::string long_name) {
-		Argument *a = new Argument();
-		_arguments.push_back(a);
-		a->names.push_back(short_name);
-		a->names.push_back(long_name);
-		return ArgumentBuilder(a);
+		Argument a;
+		a.names.push_back(short_name);
+		a.names.push_back(long_name);
+		a.action = ActionStore;
+		a.dest = long_name;
+		a.nargs = '?';
+		a.required = false;
+		_optional_arguments[long_name] = a;
+		_optional_arguments[short_name] = a;
+		return ArgumentBuilder(&(_optional_arguments[short_name]));
 	}
 	
-	std::map<std::string, Value> parse_args(std::string args) {
-		return parse_args(0, nullptr);
+	std::map<std::string, std::string> parse_args(std::string args) {		
+		std::vector<std::string> aux;
+		split(aux, args);
+		return parse_args(aux);
 	}
 
-	std::map<std::string, Value> parse_args(int argc, char const *argv[]) {
-		int i = 0;
-		while (i < argc) {
-			//if (argv[i])
+	//std::map<std::string, Value> parse_args(int argc, char const *argv[]) {
+//		
+	//}
+
+	std::map<std::string, std::string> parse_args(std::vector<std::string> &args) {
+		std::map<std::string, std::string> aux;
+		std::size_t i = 0;
+		int cur_positional_argument = 0;		
+		while (i < args.size()) {
+			//printf("handling %d -> %s\n", i, args[i].c_str());
+			bool optional_argument = args[i].at(0) == '-';
+
+			if (optional_argument) {
+				std::string key = std::string(args[i]);
+				if (_optional_arguments.find(key) == _optional_arguments.end()) {
+					fprintf(stderr, "option %s unknowed", args[i].c_str());
+					exit(EXIT_FAILURE);
+				}
+				Argument a = _optional_arguments[key];
+				switch (a.action) {
+					case ActionStore: {
+						aux[a.dest] = args[i + 1];
+						i += 2;
+						break;
+					}
+				}
+			} else {				
+				if (cur_positional_argument > _positional_arguments.size()) {
+					fprintf(stderr, "option %s unknowed", args[i].c_str());
+					exit(EXIT_FAILURE);
+				}
+				Argument a = _positional_arguments[cur_positional_argument];				
+				switch (a.action) {
+					case ActionStore: {						
+						aux[a.dest] = args[i];
+						i += 1;
+						break;
+					}
+				}
+				cur_positional_argument += 1;
+			}			
 		}
-		std::map<std::string, Value> aux;
 		return aux;
 	}
 
