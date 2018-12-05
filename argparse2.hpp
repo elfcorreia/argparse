@@ -7,6 +7,7 @@
 #include <map>
 #include <cstdio>
 #include <cstddef>
+#include <iostream>
 
 enum Action {
 	ActionStore,
@@ -54,80 +55,80 @@ private:
 public:
 	ArgumentBuilder(Argument* arg) 
 		: _arg(arg) { }
-	ArgumentBuilder(const ArgumentBuilder &other)
+	ArgumentBuilder(const ArgumentBuilder & other)
 		: _arg(other._arg) { }
 	~ArgumentBuilder() { }
 	
-	ArgumentBuilder &store_const(std::string value) {
+	const ArgumentBuilder &store_const(std::string value) {
 		_arg->action = ActionStoreConst;
 		_arg->const_value = value;
 		return *this;
 	}
 
-	ArgumentBuilder &store_true() {
+	const ArgumentBuilder &store_true() {
 		_arg->action = ActionStoreConst;
 		_arg->const_value = true;
 		return *this;
 	}
 	
-	ArgumentBuilder &store_false() {
+	const ArgumentBuilder &store_false() {
 		_arg->action = ActionStoreConst;
 		_arg->const_value = false;
 		return *this;
 	}
 
-	ArgumentBuilder &append() {
+	const ArgumentBuilder &append() {
 		_arg->action = ActionAppend;		
 		return *this;
 	}
 
-	ArgumentBuilder &append_const(std::string value) {
+	const ArgumentBuilder &append_const(std::string value) {
 		_arg->action = ActionAppend;
 		_arg->const_value = value;
 		return *this;
 	}
 	
-	ArgumentBuilder &count() {
+	const ArgumentBuilder &count() {
 		_arg->action = ActionCount;
 		return *this;
 	}
 	
-	ArgumentBuilder &version() {
+	const ArgumentBuilder &version() {
 		_arg->action = ActionVersion;
 		return *this;
 	}
 
-	ArgumentBuilder &help() {
+	const ArgumentBuilder &help() {
 		_arg->action = ActionHelp;
 		return *this;
 	}
 
-	ArgumentBuilder& nargs(char value) {
+	const ArgumentBuilder& nargs(char value) {
 		_arg->nargs = value;
 		return *this;
 	}
 
-	ArgumentBuilder& default_value(std::string value) {
+	const ArgumentBuilder& default_value(std::string value) const {
 		_arg->default_value = value;
 		return *this;
 	}
 
-	ArgumentBuilder& choices(std::initializer_list<std::string> value) {
+	const ArgumentBuilder& choices(std::initializer_list<std::string> &value) {
 		_arg->choices = value;
 		return *this;
 	}
 
-	ArgumentBuilder& required() {
+	const ArgumentBuilder& required() {
 		_arg->required = true;
 		return *this;
 	}
 
-	ArgumentBuilder& help(std::string value) {
+	const ArgumentBuilder& help(std::string value) {
 		_arg->help = value;
 		return *this;
 	} 
 
-	ArgumentBuilder& metavar(std::string value) {
+	const ArgumentBuilder& metavar(std::string value) {
 		_arg->metavar = value;
 		return *this;
 	};
@@ -135,41 +136,53 @@ public:
 
 class ArgumentParser {
 private:
-	std::map<std::string, Argument> _optional_arguments;
-	std::vector<Argument> _positional_arguments;
+	std::map<std::string, Argument*> _optional_arguments;
+	std::vector<Argument*> _positional_arguments;
+	bool _exit_on_failure;
+	const char *_description;
 public:	
-	ArgumentParser(std::string description = "") { }
+	ArgumentParser(const char *description = nullptr, bool exit_on_failure=true) {
+		_description = description;
+		_exit_on_failure = exit_on_failure;
+	}
 	~ArgumentParser() { }
 
+	void print_args() {
+		for (auto it: _optional_arguments) {
+			std::cout << it.first << ": " << it.second->default_value << ", ";
+		}
+		std::cout << std::endl;
+	}
+
 	const ArgumentBuilder add_argument(std::string name_or_flag) {
-		Argument a;
-		a.names.push_back(name_or_flag);
-		a.action = ActionStore;
-		a.dest = name_or_flag;
-		a.nargs = '?';
+		Argument* a = new Argument;
+		a->names.push_back(name_or_flag);
+		a->action = ActionStore;
+		a->dest = name_or_flag;
+		a->nargs = '?';
 		bool optional_argument = name_or_flag.at(0) == '-';
 		if (optional_argument) {
-			a.required = false;
+			a->required = false;
 			_optional_arguments[name_or_flag] = a;
-			return ArgumentBuilder(&(_optional_arguments[name_or_flag]));
+			return ArgumentBuilder(a);
 		} else {			
-			a.required = true;
+			a->required = true;
 			_positional_arguments.push_back(a);
-			return ArgumentBuilder(&(_positional_arguments[_positional_arguments.size() - 1]));
+			return ArgumentBuilder(a);
 		}
 	}
 	
 	const ArgumentBuilder add_argument(std::string short_name, std::string long_name) {
-		Argument a;
-		a.names.push_back(short_name);
-		a.names.push_back(long_name);
-		a.action = ActionStore;
-		a.dest = long_name;
-		a.nargs = '?';
-		a.required = false;
+		Argument *a = new Argument;
+		a->names.push_back(short_name);
+		a->names.push_back(long_name);
+		a->action = ActionStore;
+		a->dest = long_name;
+		a->nargs = '?';
+		a->required = false;
 		_optional_arguments[long_name] = a;
 		_optional_arguments[short_name] = a;
-		return ArgumentBuilder(&(_optional_arguments[short_name]));
+		return ArgumentBuilder(a);
 	}
 	
 	std::map<std::string, std::string> parse_args(std::string args) {		
@@ -179,40 +192,55 @@ public:
 	}
 
 	//std::map<std::string, Value> parse_args(int argc, char const *argv[]) {
-//		
+	//		
 	//}
+
+	void handle_unknown_option(const std::string &arg) {
+		if (_exit_on_failure) {
+			fprintf(stderr, "Unknown option \"%s\"\n", arg.c_str());
+			fprintf(stderr, "Use -h for help\n");
+			exit(EXIT_FAILURE);		
+		} else {
+			throw "Unknown option";
+		}
+	}
 
 	std::map<std::string, std::string> parse_args(std::vector<std::string> &args) {
 		std::map<std::string, std::string> aux;
+		for (auto it :_optional_arguments) {
+			aux[it.first] = it.second->default_value;
+		}		
 		std::size_t i = 0;
 		int cur_positional_argument = 0;		
 		while (i < args.size()) {
 			//printf("handling %d -> %s\n", i, args[i].c_str());
 			bool optional_argument = args[i].at(0) == '-';
+			std::string arg = args[i];
 
-			if (optional_argument) {
-				std::string key = std::string(args[i]);
-				if (_optional_arguments.find(key) == _optional_arguments.end()) {
-					fprintf(stderr, "option %s unknowed", args[i].c_str());
-					exit(EXIT_FAILURE);
+			if (optional_argument) {			
+				if (_optional_arguments.find(arg) == _optional_arguments.end()) {
+					handle_unknown_option(arg);
 				}
-				Argument a = _optional_arguments[key];
-				switch (a.action) {
+				Argument *a = _optional_arguments[arg];
+				switch (a->action) {
 					case ActionStore: {
-						aux[a.dest] = args[i + 1];
+						//push n args
+						aux[a->dest] = args[i + 1];
+						if (a->choices.size() > 0) {
+							//check choices
+						}
 						i += 2;
 						break;
 					}
 				}
 			} else {				
-				if (cur_positional_argument > _positional_arguments.size()) {
-					fprintf(stderr, "option %s unknowed", args[i].c_str());
-					exit(EXIT_FAILURE);
+				if (cur_positional_argument >= _positional_arguments.size()) {
+					handle_unknown_option(arg);
 				}
-				Argument a = _positional_arguments[cur_positional_argument];				
-				switch (a.action) {
+				Argument *a = _positional_arguments[cur_positional_argument];				
+				switch (a->action) {
 					case ActionStore: {						
-						aux[a.dest] = args[i];
+						aux[a->dest] = args[i];
 						i += 1;
 						break;
 					}
@@ -223,7 +251,9 @@ public:
 		return aux;
 	}
 
-	void print_help() { }
+	void print_help() {
+
+	}
 
 };
 

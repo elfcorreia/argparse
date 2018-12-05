@@ -11,7 +11,7 @@ void print(map<string, string> &m) {
 }
 
 void test_name() {
-	ArgumentParser parser;
+	ArgumentParser parser("argparser test", false);
 	parser.add_argument("-f", "--foo");
 	parser.add_argument("bar");	
 
@@ -22,6 +22,34 @@ void test_name() {
 	print(args);
 	
 	args = parser.parse_args("--foo FOO");
+	print(args);
+
+	try {
+		auto args = parser.parse_args("BAR BOO");
+	} catch (...) {
+		std::cout << "exception caught" << std::endl;		
+	}
+
+	try {
+		auto args = parser.parse_args("--foo FOO BAR BOO");
+	} catch (...) {
+		std::cout << "exception caught" << std::endl;		
+	}
+
+	try {
+		auto args = parser.parse_args("--fox FOO BAR BOO");
+	} catch (...) {
+		std::cout << "exception caught" << std::endl;		
+	}
+}
+
+void test_default() {
+	ArgumentParser parser("argparser test", true);
+	parser.add_argument("-f", "--foo").default_value("bar");
+
+	parser.print_args();
+
+	auto args = parser.parse_args("");
 	print(args);
 }
 
@@ -98,10 +126,9 @@ void test_name() {
 	//parser.add_argument("baz").nargs(remainder);
 //}
 
-
-
 int main(int argc, char const *argv[])
 {
 	test_name();
+	test_default();
 	return 0;
 }
