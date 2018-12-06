@@ -1,4 +1,4 @@
-#include "argparse2.hpp"
+#include "argparse.hpp"
 #include <iostream>
 
 using namespace std;
@@ -47,10 +47,39 @@ void test_default() {
 	ArgumentParser parser("argparser test", true);
 	parser.add_argument("-f", "--foo").default_value("bar");
 
-	parser.print_args();
+	parser.usage();
 
 	auto args = parser.parse_args("");
 	print(args);
+}
+
+void test_required_posargs() {
+	ArgumentParser parser("argparser test", false);
+	parser.add_argument("BAR");
+	parser.add_argument("FOO");
+
+	parser.usage();
+
+	try {
+		auto args = parser.parse_args("");		
+	} catch (...) {
+		cout << "catch exception" << endl;
+	}
+
+	try {
+		auto args = parser.parse_args("abc");		
+	} catch (...) {
+		cout << "catch exception" << endl;
+	}
+
+
+	try {
+		auto args = parser.parse_args("abc cde");		
+		print(args);
+	} catch (...) {
+		cout << "catch exception" << endl;
+	}
+	
 }
 
 //void test_action() {
@@ -128,7 +157,8 @@ void test_default() {
 
 int main(int argc, char const *argv[])
 {
-	test_name();
-	test_default();
+	//test_name();
+	//test_default();
+	test_required_posargs();
 	return 0;
 }
